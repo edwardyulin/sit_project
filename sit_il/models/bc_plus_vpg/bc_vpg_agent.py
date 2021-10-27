@@ -1,23 +1,28 @@
-#imports
-from typing import List, Optional, Tuple, Any, Dict, Union
-
-import tempfile
+from typing import List, Optional, Dict, Union, Tuple, Any
+import gym
+import keras
+import wandb
 from pathlib import Path
-
 import numpy as np
-from dataclasses import field, dataclass
 import pandas as pd
 
-import gym
-import wandb
+import tempfile
+
+from dataclasses import field, dataclass
 
 import tensorflow as tf
 from tensorflow.keras.utils import plot_model
 
+from sit_il.models.bc.bc import BCAgent
 from sit_il.models.rl.npg.vpg.mlp_critic import MLPCritic
 from sit_il.models.rl.npg.vpg.mlp_continuous_actor import MLPContinuousActor
+
 from sit_il.helpers import compute_discounted_return
 
+import h5py
+
+import os
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 @dataclass
 class Trajectories:
@@ -46,19 +51,13 @@ class Trajectories:
 
 
 
-
-
-class VPGContinuousAgent:
-    """ Vanilla Policy Gradient agent for environments with continuous actions space """
+class BC_VPG_Agent:
 
     actor: MLPContinuousActor
-    critic: MLPCritic
+    critic: MLPCritic # TODO: change this to a new critic network
 
     def __init__(self,
-                 env: gym.Env
-                 ):
-        """ Define variables for VPGContinuousAgent"""
-
+                 env: gym.Env):
         self.model_name = self.__class__.__name__
         self.env = env
         self.observation_size = self.env.observation_space.shape[0]
@@ -73,14 +72,13 @@ class VPGContinuousAgent:
             "critic_loss": []
         }
 
-
     def pipeline(self,
                  actor_hidden_units: List[int],
                  critic_hidden_units: List[int],
                  actor_learning_rate: float,
                  critic_learning_rate: float,
                  n_train_episodes: int,
-                 max_episode_length: int,
+                 max_vpg_episode_length: int,
                  discount_rate: float,
                  n_test_episodes: int,
                  print_summary: bool,
@@ -89,12 +87,11 @@ class VPGContinuousAgent:
                  save_actor_network_to_file: Optional[Path],
                  save_critic_network_to_file: Optional[Path],
                  load_actor_network_from_file: Optional[Path],
-                 load_critic_network_from_file: Optional[Path],
-                 ) -> None:
-        """Run the pipeline including building, training, and testing the agent."""
+                 load_critic_network_from_file: Optional[Path],):
 
+        # Initialize wandb
         with wandb.init(
-            project="sit_vpg_door",
+            project="sit_bc_vpg_door",
             entity="edward_lin",
             tags=[self.model_name],
             resume=False,
@@ -107,7 +104,7 @@ class VPGContinuousAgent:
                 "actor_learning_rate": actor_learning_rate,
                 "critic_learning_rate": critic_learning_rate,
                 "n_train_episodes": n_train_episodes,
-                "max_episode_length": max_episode_length,
+                "max_episode_length": max_vpg_episode_length,
                 "discount_rate": discount_rate,
                 "n_test_episodes": n_test_episodes,
             },
@@ -116,10 +113,10 @@ class VPGContinuousAgent:
             self.config = wandb.config
 
             if load_actor_network_from_file and load_critic_network_from_file:
-                # load actor and critic networks instead of training
                 self.load(load_actor_network_from_file, load_critic_network_from_file)
             else:
-                # build actor and critic networks
+                # Train with BC and return the neural network
+                # Construct actor and critic networks with weights from the BC neural network
                 self.build(
                     observation_size=self.config["observation_size"],
                     action_size=self.config["action_size"],
@@ -129,12 +126,6 @@ class VPGContinuousAgent:
                     critic_learning_rate=self.config["critic_learning_rate"]
                 )
 
-                # visualize model architecture
-                if print_summary:
-                    self.summary()
-
-                # drawing the structures of actor and critic networks to file
-                # note that actor network is different between continuous and discrete action space
                 actor_plot_file, critic_plot_file = self.render_networks(
                     plot_actor_network_to_file,
                     plot_critic_network_to_file
@@ -147,17 +138,27 @@ class VPGContinuousAgent:
                     }
                 )
 
-                # train the agent
+                print("Actor network:")
+                print(self.actor.model.summary())
+                print()
+                print("=======================")
+                print("Critic network:")
+                print(self.critic.model.summary())
+                # Visual model architecture from wandb
+
+                # Train the agent with VPG (while logging wandb)
                 self.fit(
                     n_episodes=self.config["n_train_episodes"],
                     max_episode_length=self.config["max_episode_length"],
-                    discount_rate=self.config["discount_rate"]
+                    discount_rate=self.config["discount_rate"],
+                    actor_learning_rate=self.config["actor_learning_rate"]
                 )
 
                 # save after training
                 if save_actor_network_to_file and save_critic_network_to_file:
                     self.save(save_actor_network_to_file, save_critic_network_to_file)
 
+            # Evaluate the model
             # evaluate the agent and log results onto wandb
             results = self.evaluate(n_episodes=n_test_episodes)
             # An episode succeed if "what"
@@ -180,6 +181,13 @@ class VPGContinuousAgent:
 
 
 
+
+
+
+
+
+
+
     def build(self,
               observation_size: int,
               action_size: int,
@@ -188,15 +196,12 @@ class VPGContinuousAgent:
               actor_learning_rate: float,
               critic_learning_rate: float
               ) -> None:
-        """ Construct actor network and critic network """
-
         self.actor = MLPContinuousActor()
         self.actor.build(
             observation_size=observation_size, #input of the network
             output_size=action_size, # output of one float value to represent the action (instead of prob. of actions seen in discrete)
             hidden_units=actor_hidden_units,
-            learning_rate=actor_learning_rate
-        )
+            learning_rate=actor_learning_rate)
 
         self.critic = MLPCritic()
         self.critic.build(
@@ -205,16 +210,6 @@ class VPGContinuousAgent:
             learning_rate=critic_learning_rate,
         )
 
-
-    def summary(self) -> None:
-        """ Print the summary of the actor and critic networks """
-
-        print("Actor network:")
-        print(self.actor.model.summary())
-        print()
-        print("=======================")
-        print("Critic network:")
-        print(self.critic.model.summary())
 
     def render_networks(self,
                         actor_to_file: Optional[Path] = None,
@@ -255,7 +250,8 @@ class VPGContinuousAgent:
     def fit(self,
             n_episodes: int,
             max_episode_length: int,
-            discount_rate: int
+            discount_rate: int,
+            actor_learning_rate: int
             ) -> None:
         """ Train the agent"""
 
@@ -313,7 +309,9 @@ class VPGContinuousAgent:
                 actor_loss = self.actor.fit(
                     observations=np.atleast_2d(trajectories.observations),
                     actions=trajectories.actions,
-                    advantages=advantages
+                    advantages=advantages,
+                    learning_rate=actor_learning_rate,
+                    step=step
                 )
 
                 # Calculate critic loss (Pseudocode line 8)
@@ -371,6 +369,7 @@ class VPGContinuousAgent:
         """Return an action given the input observation"""
 
         return self.actor.model.predict(np.atleast_2d(np.squeeze(observation)))[0]
+
 
     def _log_history(self,
                      episode: int,

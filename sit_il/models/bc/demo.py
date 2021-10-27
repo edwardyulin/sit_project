@@ -2,6 +2,7 @@
 import pickle
 import numpy as np
 from mjrl.utils.gym_env import GymEnv
+from mj_envs import hand_manipulation_suite
 
 def demo_playback(env, demo):
     e = GymEnv(env)
