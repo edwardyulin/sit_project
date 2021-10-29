@@ -29,7 +29,7 @@ def main() -> None:
 
     load_actor_from_file = None #Path(r"C:\Users\User\PycharmProjects\sit_project\sit_il\saved_model\vpg_actor.h5")
     load_critic_from_file = None  #Path(r"C:\Users\User\PycharmProjects\sit_project\sit_il\saved_model\vpg_critic.h5")
-
+    load_bc_network = Path(r"C:\Users\User\PycharmProjects\sit_project\sit_il\saved_model\bc_network")
     try:
         model.pipeline(
             # the parameters can be changed
@@ -47,7 +47,8 @@ def main() -> None:
             save_actor_network_to_file=save_actor_to_file,
             save_critic_network_to_file=save_critic_to_file,
             load_actor_network_from_file=load_actor_from_file,
-            load_critic_network_from_file=load_critic_from_file)
+            load_critic_network_from_file=load_critic_from_file,
+            load_bc_network=load_bc_network)
     except KeyboardInterrupt:
         print("Saving the agent...")
         model.save(save_actor_to_file, save_critic_to_file)

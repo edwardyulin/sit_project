@@ -89,7 +89,7 @@ class VPGContinuousAgent:
                  save_actor_network_to_file: Optional[Path],
                  save_critic_network_to_file: Optional[Path],
                  load_actor_network_from_file: Optional[Path],
-                 load_critic_network_from_file: Optional[Path],
+                 load_critic_network_from_file: Optional[Path]
                  ) -> None:
         """Run the pipeline including building, training, and testing the agent."""
 
@@ -126,7 +126,7 @@ class VPGContinuousAgent:
                     actor_hidden_units=self.config["actor_hidden_units"],
                     critic_hidden_units=self.config["critic_hidden_units"],
                     actor_learning_rate=self.config["actor_learning_rate"],
-                    critic_learning_rate=self.config["critic_learning_rate"]
+                    critic_learning_rate=self.config["critic_learning_rate"],
                 )
 
                 # visualize model architecture
@@ -186,7 +186,8 @@ class VPGContinuousAgent:
               actor_hidden_units: List[int],
               critic_hidden_units: List[int],
               actor_learning_rate: float,
-              critic_learning_rate: float
+              critic_learning_rate: float,
+              load_bc_network: Optional[Path]
               ) -> None:
         """ Construct actor network and critic network """
 
@@ -195,7 +196,8 @@ class VPGContinuousAgent:
             observation_size=observation_size, #input of the network
             output_size=action_size, # output of one float value to represent the action (instead of prob. of actions seen in discrete)
             hidden_units=actor_hidden_units,
-            learning_rate=actor_learning_rate
+            learning_rate=actor_learning_rate,
+            load_bc_network=load_bc_network
         )
 
         self.critic = MLPCritic()

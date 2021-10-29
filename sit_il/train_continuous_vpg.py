@@ -40,6 +40,7 @@ def main() -> None:
     save_actor_to_file = Path(r"C:\Users\User\PycharmProjects\sit_project\sit_il\saved_model\vpg_actor.h5")
     save_critic_to_file = Path(r"C:\Users\User\PycharmProjects\sit_project\sit_il\saved_model\vpg_critic.h5")
 
+
     load_actor_from_file = None #Path(r"C:\Users\User\PycharmProjects\sit_project\sit_il\saved_model\vpg_actor.h5")
     load_critic_from_file = None  #Path(r"C:\Users\User\PycharmProjects\sit_project\sit_il\saved_model\vpg_critic.h5")
 

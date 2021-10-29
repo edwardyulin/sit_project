@@ -19,7 +19,6 @@ from sit_il.models.rl.npg.vpg.mlp_continuous_actor import MLPContinuousActor
 
 from sit_il.helpers import compute_discounted_return
 
-import h5py
 
 import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
@@ -87,7 +86,8 @@ class BC_VPG_Agent:
                  save_actor_network_to_file: Optional[Path],
                  save_critic_network_to_file: Optional[Path],
                  load_actor_network_from_file: Optional[Path],
-                 load_critic_network_from_file: Optional[Path],):
+                 load_critic_network_from_file: Optional[Path],
+                 load_bc_network: Optional[Path]):
 
         # Initialize wandb
         with wandb.init(
@@ -123,7 +123,8 @@ class BC_VPG_Agent:
                     actor_hidden_units=self.config["actor_hidden_units"],
                     critic_hidden_units=self.config["critic_hidden_units"],
                     actor_learning_rate=self.config["actor_learning_rate"],
-                    critic_learning_rate=self.config["critic_learning_rate"]
+                    critic_learning_rate=self.config["critic_learning_rate"],
+                    load_bc_network=load_bc_network
                 )
 
                 actor_plot_file, critic_plot_file = self.render_networks(
@@ -194,14 +195,17 @@ class BC_VPG_Agent:
               actor_hidden_units: List[int],
               critic_hidden_units: List[int],
               actor_learning_rate: float,
-              critic_learning_rate: float
+              critic_learning_rate: float,
+              load_bc_network: Optional[Path]
               ) -> None:
         self.actor = MLPContinuousActor()
         self.actor.build(
             observation_size=observation_size, #input of the network
             output_size=action_size, # output of one float value to represent the action (instead of prob. of actions seen in discrete)
             hidden_units=actor_hidden_units,
-            learning_rate=actor_learning_rate)
+            learning_rate=actor_learning_rate,
+            load_bc_network=load_bc_network
+        )
 
         self.critic = MLPCritic()
         self.critic.build(
@@ -240,13 +244,6 @@ class BC_VPG_Agent:
         )
         return actor_to_file, critic_to_file
 
-    def normalize_data(self,
-                       data: np.ndarray):
-        max_value = 2
-        min_value = -1
-        norm = np.clip(data, min_value, max_value)
-        return norm
-
     def fit(self,
             n_episodes: int,
             max_episode_length: int,
@@ -278,7 +275,7 @@ class BC_VPG_Agent:
                 # ]
                 action = self.actor.model.predict(np.atleast_2d(np.squeeze(observation)))
                 # only take the first argument, don't need batch_size
-                action = self.normalize_data(action[0])
+                action = action[0]
                 #print(action)
                 next_observation, reward, done, _ = self.env.step(action)
 
@@ -339,7 +336,6 @@ class BC_VPG_Agent:
 
             while not done:
                 action = self.act(observation)
-                action = self.normalize_data(action)
                 new_observation, reward, done, _ = self.env.step(action)
                 self.env.render()
 

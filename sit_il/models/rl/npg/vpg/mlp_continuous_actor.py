@@ -1,6 +1,6 @@
 # imports
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 import gym
 
 import tensorflow as tf
@@ -36,12 +36,13 @@ class MLPContinuousActor:
               observation_size: int,
               output_size: int,
               hidden_units: List[int],
-              learning_rate: float
+              learning_rate: float,
+              load_bc_network: Optional[Path]
               ) -> None:
         """ Build the actor network"""
 
         # set the actor with pre-training using behavioural cloning
-        self.model = self.bc()
+        self.load(load_bc_network)
 
 
 
@@ -65,9 +66,10 @@ class MLPContinuousActor:
             lamb_0 = 0.1 # from Rajeswaran et al. (2018)
             lamb_1 = 0.95 # from Rajeswaran et al. (2018)
             score_fn = tf.math.square(pred_action[:] - actions) # -> shape of (T,)
-            weighting_fn = lamb_0 * lamb_1**step * advantages
-            actor_loss = -tf.math.reduce_mean(tf.reduce_sum(score_fn) * advantages) \
-                         - tf.math.reduce_mean(tf.reduce_sum(score_fn) * weighting_fn)
+            #TODO: run the code without weighting_fn
+            #weighting_fn = lamb_0 * lamb_1**step * advantages
+            actor_loss = -tf.math.reduce_mean(tf.reduce_sum(score_fn) * advantages)
+                         #- tf.math.reduce_mean(tf.reduce_sum(score_fn) * weighting_fn)
             # -> shape of (,); a float
 
         # Compute policy update (Pseudocode line 7)
@@ -104,98 +106,3 @@ class MLPContinuousActor:
         """Load the saved model architecture and weight values."""
         self.model = tf.keras.models.load_model(from_file)
 
-
-
-
-    """"""""""""""""""" Behavioural Cloning Begins """""""""""""""""""""""""
-
-    def normalize_data(self,
-                       data: np.ndarray):
-        min_value = -2.0
-        max_value = 2.0
-        return (data - min_value) / (max_value - min_value)
-
-    def reform(self,
-               npy: np.ndarray):
-        new = npy[0]
-        for i in range(1, len(npy)):
-            new = np.concatenate((new, npy[i]), axis=0)
-        return new
-
-    def build_network(self):
-        model = tfk.Sequential([
-            # each element in the state_data has 39 elements
-            # each element in eh action_data has 28 elements
-            tfk.layers.Dense(input_shape=(39,), units=32, activation='relu', name='input_layer'),
-            #tfk.layers.Dense(units=32, activation='relu', name='hidden_layer'),
-            tfk.layers.Dense(units=16, activation='relu', name='hidden_layer1'),
-            tfk.layers.Dense(units=16, activation='relu', name='hidden_layer2'),
-            tfk.layers.Dense(units=28, activation='linear', name='output_layer')
-        ])
-
-        print(model.summary())
-        return model
-
-    def train_model(self,
-                    model: tfk.Sequential,
-                    action_data: np.ndarray,
-                    state_data: np.ndarray):
-        print("Training starts")
-        loss_axis = []
-        acc_axis = []
-        model.compile(
-            # TODO: play around different lr, loss_fn, batch_size, epochs, layer num to find optimal training algo
-            # gradient descent
-            optimizer=tfk.optimizers.Adam(learning_rate=1e-2),  # change learning rate for different accuracy/loss
-            # loss function
-            loss=tfk.losses.mean_squared_error,
-            # use mean_absolute_error if have outliers
-        )
-        model.fit(
-            # training data
-            state_data,
-            # label data
-            action_data,
-            # size of data in one training loop
-            batch_size=32,  # usually 32, 64, 128, 256...
-            epochs=100,  # num of training iterations
-            shuffle=True,
-            # increase epochs with the complexity of the problem
-        )
-
-        history = model.history.history
-        print(type(history["loss"]))
-        new_loss_axis = loss_axis + history["loss"]
-        loss_axis = new_loss_axis
-
-        print(loss_axis)
-        fig, axis = plt.subplots(1, 2, figsize=(12, 6))
-        # loss function measures how far an estimated value is from its true value
-        axis[0].plot(loss_axis, label="loss")
-        # don't need to show plot for now
-        axis[0].legend()
-        #plt.show()
-
-    def bc(self):
-        np_load_old = np.load
-        np.load = lambda *a,**k: np_load_old(*a, allow_pickle=True, **k)
-
-        action_npy = np.load(r'C:\Users\User\PycharmProjects\sit_project\sit_il\models\bc_plus_vpg\demo_actions.npy')
-        obs_npy = np.load(r'C:\Users\User\PycharmProjects\sit_project\sit_il\models\bc_plus_vpg\demo_obs.npy')
-        action_data = self.normalize_data(self.reform(action_npy))
-        print("Demo actions shape:", action_data.shape)
-        state_data = self.normalize_data(self.reform(obs_npy))
-        print("Demo obs shape:", state_data.shape)
-        print("")
-        env = gym.make('door-v0')
-        print(action_data)
-
-        model = self.build_network()
-
-        self.train_model(model=model,
-                        action_data=action_data,
-                        state_data=state_data)
-
-        return model
-
-    """"""""""""""""""" Behavioural Cloning Ends """""""""""""""""""""""""

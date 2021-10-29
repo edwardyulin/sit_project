@@ -1,12 +1,15 @@
 # import libraries
+import os
+from pathlib import Path
+from typing import Optional
 
-from tensorflow import keras as tfk
-import numpy as np
 import gym
 import matplotlib.pyplot as plt
-import os
+import numpy as np
+from tensorflow import keras as tfk
+
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
-from mj_envs import hand_manipulation_suite
+
 
 class BCAgent:
     """Behavioural Cloning"""
@@ -15,19 +18,6 @@ class BCAgent:
                  env: gym.Env) -> None:
         self.model_name = self.__class__.__name__
         self.env = env
-
-
-    def normalize_data(self,
-                       data):
-        min_value = -2.0
-        max_value = 2.0
-        return (data - min_value)/(max_value - min_value)
-
-    def denormalize_data(self,
-                         data):
-        min_value = -2.0
-        max_value = 2.0
-        return data * (max_value - min_value) + min_value
 
     # construct network
     def build_network(self):
@@ -110,8 +100,8 @@ class BCAgent:
             count_step = 0
 
             while not done:
-                action = model.predict(self.normalize_data(prev_obs.reshape(1, 39)))
-                action = self.denormalize_data(action)
+                action = model.predict(prev_obs.reshape(1, 39))
+                #action = self.denormalize_data(action)
                 obs, _, done, _ = env.step(action[0])
                 count_step += 1
                 prev_obs = obs
@@ -122,16 +112,19 @@ class BCAgent:
 
         return accuracy/num_episodes
 
+    def save(self, to_file: Path)->None:
+        self.model.save(to_file, save_format="tf")
 
-    def pipeline(self):
+    def pipeline(self,
+                 save_network_to_file: Optional[Path]):
         np_load_old = np.load
         np.load = lambda *a,**k: np_load_old(*a, allow_pickle=True, **k)
 
         action_npy = np.load(r"C:\Users\User\PycharmProjects\sit_project\sit_il\models\bc\demo_actions.npy")
         obs_npy = np.load(r"C:\Users\User\PycharmProjects\sit_project\sit_il\models\bc\demo_obs.npy")
-        action_data = self.normalize_data(self.reform(action_npy))
+        action_data = self.reform(action_npy)
         print("Demo actions shape:", action_data.shape)
-        state_data = self.normalize_data(self.reform(obs_npy))
+        state_data = self.reform(obs_npy)
         print("Demo obs shape:", state_data.shape)
         print("")
         #rewards_data = np.load('demo_rewards.npy')
@@ -140,12 +133,16 @@ class BCAgent:
         print(action_data)
 
         # build neural network
-        model = self.build_network()
+        self.model = self.build_network()
 
-        self.train_model(model, action_data, state_data)
+        self.train_model(self.model, action_data, state_data)
 
         print("==========")
-        print("Accuracy: ", self.evaluate_model(model))
+        #print("Accuracy: ", self.evaluate_model(self.model))
+
+        # save BC model
+        self.save(save_network_to_file)
+
 
 
         # visualize the trained model
@@ -155,7 +152,7 @@ class BCAgent:
             # Render the environment
             env.render()
             # Get expert action
-            action = model.predict(prev_obs.reshape(1, 39))
+            action = self.model.predict(prev_obs.reshape(1, 39))
             """
             # shape of the each action is (1, 28), 1 row and 28 columns (1 array)
             print(action.shape)
